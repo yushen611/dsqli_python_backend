@@ -1,0 +1,48 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag my-image-name:latest
+      # 打包镜像推送到docker
+    - name: Build and Push the Docker image
+      run: |
+        docker login --username=${{ secrets.DK_UNAME }} --password=${{ secrets.DK_PW }}
+        docker build -t ${{ secrets.DK_UNAME }}/sqli-detector-python:latest .
+        docker push ${{ secrets.DK_UNAME }}/sqli-detector-python:latest
+        
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.TXC_IP }}
+          username: root
+          password: ${{ secrets.TXC_SSH_PASSWORD }}
+          script: |
+            echo -e "---------docker login--------"
+            sudo docker login --username=${{ secrets.DK_UNAME }} --password=${{ secrets.DK_PW }}
+            echo -e "---------docker Stop--------"
+            sudo docker stop sqli-detector-python
+            echo -e "---------docker Rm--------"
+            sudo docker rm sqli-detector-python
+            sudo docker rmi ${{ secrets.DK_UNAME }}/sqli-detector-python:latest
+            echo -e "---------docker Pull--------"
+            sudo docker pull ${{ secrets.DK_UNAME }}/sqli-detector-python:latest
+            echo -e "---------docker Create and Start--------"
+            sudo docker run --rm -d -p 8000:8000 --name sqli-detector-python ${{ secrets.DK_UNAME }}/sqli-detector-python:latest
+            echo -e "---------deploy Success--------"
